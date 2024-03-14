@@ -335,22 +335,22 @@ namespace ZDTStepperDriver
         {
             SendPack(addr, new Pack
             {
-                Command = Command.GoHome,
+                Command = Command.ReadHomingConfig,
                 Payload = new byte[] {
                     0x22
                 },
                 Verification = VerificationType
             });
-            var pk = HandleReply(addr, Command.GoHome, true);
+            var pk = HandleReply(addr, Command.ReadHomingConfig, true);
             var payload = pk!.Value.Payload;
-            return new HomingConfig()
+            return new HomingConfig
             {
                 Type = (HommingType)payload[0],
                 RotateDirection = (RotateDirection)payload[1],
                 RPM = (payload[2] << 8 + payload[3]),
-                TimeOutMs = (payload[4] << 8 * 3)
-                             + (payload[5] << 8 * 2)
-                             + (payload[6] << 8 * 1)
+                TimeOutMs = (payload[4] << 24)
+                             + (payload[5] << 16)
+                             + (payload[6] << 8)
                              + (payload[7]),
                 CollisionThresholdRPM = (payload[8] << 8 + payload[9]),
                 CollisionThresholdCurrent = (payload[10] << 8 + payload[11]),
@@ -359,7 +359,13 @@ namespace ZDTStepperDriver
             };
         }
 
-        public void SetHomingConfig(byte addr = 0, bool mem = true)
+        /// <summary>
+        /// 更改回零设置
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <param name="config">新的回零设置</param>
+        /// <param name="mem">保存更改，掉电不丢失</param>
+        public void SetHomingConfig(byte addr, HomingConfig config, bool mem = true)
         {
             SendPack(addr, new Pack
             {
@@ -367,59 +373,422 @@ namespace ZDTStepperDriver
                 Payload = new byte[] {
                     0xAE,
                     (byte)(mem?0x01:0x00),
+                    (byte)config.Type,
+                    (byte)config.RotateDirection,
 
+                    (byte)(config.RPM>>8),
+                    (byte)(config.RPM&0xFF),
+
+                    (byte)(config.TimeOutMs>>24),
+                    (byte)(config.TimeOutMs>>16),
+                    (byte)(config.TimeOutMs>>8),
+                    (byte)(config.TimeOutMs&0xFF),
+
+                    (byte)(config.CollisionThresholdRPM>>8),
+                    (byte)(config.CollisionThresholdRPM&0xFF),
+
+                    (byte)(config.CollisionThresholdCurrent>>8),
+                    (byte)(config.CollisionThresholdCurrent&0xFF),
+
+                    (byte)(config.CollisionThresholdTime>>8),
+                    (byte)(config.CollisionThresholdTime&0xFF),
+
+                    (byte)(config.PowerOnHome?0x01:0x00)
                 },
                 Verification = VerificationType
             });
+
+            HandleReply(addr, Command.SetHomingConfig);
         }
 
+        /// <summary>
+        /// 获取回零状态
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public HomingStatus GetHomingStatus(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.ReadHomingStatus,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.ReadHomingStatus, true);
+            var payload = pk!.Value.Payload;
+            return new HomingStatus
+            {
+                EncoderOK = (payload[0] & 0x01) == 0x01,
+                CalibrationTableOK = (payload[0] & 0x02) == 0x01,
+                Homing = (payload[0] & 0x04) == 0x01,
+                HomingFailed = (payload[0] & 0x08) == 0x01,
+            };
+        }
+
+        /// <summary>
+        /// 校准编码器
+        /// <para>此操作会转动电机</para>
+        /// <para>Motor will rotate!</para>
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        public void CalibrateEncoder(byte addr = 0)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.CalibrateEncoder,
+                Payload = new byte[] {
+                    0x45
+                },
+                Verification = VerificationType
+            });
+            HandleReply(addr, Command.CalibrateEncoder);
+        }
+
+        /// <summary>
+        /// 归零脉冲计数器
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        public void ZeroPulseCounter(byte addr = 0)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.ZeroPulseCounter,
+                Payload = new byte[] {
+                    0x6D
+                },
+                Verification = VerificationType
+            });
+            HandleReply(addr, Command.ZeroPulseCounter);
+        }
+
+        /// <summary>
+        /// 堵转保护复位
+        /// <para>使驱动恢复正常状态</para>
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        public void ClogProtectionReset(byte addr = 0)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.ClogProtectionReset,
+                Payload = new byte[] {
+                    0x6D
+                },
+                Verification = VerificationType
+            });
+            HandleReply(addr, Command.ClogProtectionReset);
+        }
+
+        /// <summary>
+        /// 将驱动器恢复出厂设置
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        public void FactoryReset(byte addr = 0)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.FactoryReset,
+                Payload = new byte[] {
+                    0x5F
+                },
+                Verification = VerificationType
+            });
+            HandleReply(addr, Command.FactoryReset);
+        }
+
+        /// <summary>
+        /// 获取驱动器版本信息
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public Models.Version GetDriverVersion(byte addr = 0)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetDriverVersion,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetDriverVersion, true);
+            var payload = pk!.Value.Payload;
+            return new Models.Version
+            {
+                Hardware = payload[0],
+                Firmware = payload[1]
+            };
+        }
+
+        /// <summary>
+        /// 获取电机特性参数
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public MotorCharacteristics GetMotorCharacteristics(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.ReadMotorCharacteristic,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.ReadMotorCharacteristic, true);
+            var payload = pk!.Value.Payload;
+            return new MotorCharacteristics
+            {
+                PhaseResisitance = (ushort)(payload[0] << 8 + payload[1]),
+                PhaseInductance = (ushort)(payload[2] << 8 + payload[3]),
+            };
+        }
+
+        /// <summary>
+        /// 获取位置环PID参数
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public PIDParameters GetPosPIDParameters(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.ReadPosPIDParameters,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.ReadPosPIDParameters, true);
+            var payload = pk!.Value.Payload;
+            return new PIDParameters
+            {
+                Kp = (payload[0] << 24) +
+                     (payload[1] << 16) +
+                     (payload[2] << 8) +
+                     (payload[3]),
+                Ki = (payload[4] << 24) +
+                     (payload[5] << 16) +
+                     (payload[6] << 8) +
+                     (payload[7]),
+                Kd = (payload[8] << 24) +
+                     (payload[9] << 16) +
+                     (payload[10] << 8) +
+                     (payload[11])
+            };
+        }
+
+        /// <summary>
+        /// 获取电源轨电压
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns>电压/V</returns>
+        public float GetRailVotage(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetRailVotage,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetRailVotage, true);
+            var payload = pk!.Value.Payload;
+            return ((payload[0] << 8) + payload[1]) / 1000f;
+        }
+
+        /// <summary>
+        /// 获取相电流
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns>电流/A</returns>
+        public float GetPhaseCurrent(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetPhaseCurrent,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetPhaseCurrent, true);
+            var payload = pk!.Value.Payload;
+            return ((payload[0] << 8) + payload[1]) / 1000f;
+        }
+
+        /// <summary>
+        /// 获取编码器读数
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public ushort GetEncoderReading(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetEncoderReading,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetEncoderReading, true);
+            var payload = pk!.Value.Payload;
+            return (ushort)((payload[0] << 8) + payload[1]);
+        }
+
+        /// <summary>
+        /// 获取脉冲数
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetPulses(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetEncoderReading,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetEncoderReading, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 24) +
+                (payload[2] << 16) +
+                (payload[3] << 8) +
+                (payload[4])
+                );
+        }
+
+        /// <summary>
+        /// 获取目标位置
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetTargetPos(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetTargetPos,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetTargetPos, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 24) +
+                (payload[2] << 16) +
+                (payload[3] << 8) +
+                (payload[4])
+                );
+        }
+
+        /// <summary>
+        /// 获取开环模式下一个旋转目标位置
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetOLTargetPos(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetOLTargetPos,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetOLTargetPos, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 24) +
+                (payload[2] << 16) +
+                (payload[3] << 8) +
+                (payload[4])
+                );
+        }
+
+        /// <summary>
+        /// 获取当前转速
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetRPM(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetRPM,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetRPM, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 8) +
+                (payload[2])
+                );
+        }
+
+        /// <summary>
+        /// 获取当前位置
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetCurrentPos(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetCurrentPos,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetCurrentPos, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 24) +
+                (payload[2] << 16) +
+                (payload[3] << 8) +
+                (payload[4])
+                );
+        }
+
+        /// <summary>
+        /// 获取当前位置到目标位置的差值
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public int GetPosError(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetPosError,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetPosError, true);
+            var payload = pk!.Value.Payload;
+            return (payload[0] == 0x00 ? 1 : -1) * (
+                (payload[1] << 24) +
+                (payload[2] << 16) +
+                (payload[3] << 8) +
+                (payload[4])
+                );
+        }
+
+        /// <summary>
+        /// 获取电机状态
+        /// </summary>
+        /// <param name="addr">驱动器地址</param>
+        /// <returns></returns>
+        public MotorStatus GetMotorStatus(byte addr)
+        {
+            SendPack(addr, new Pack
+            {
+                Command = Command.GetMotorStatus,
+                Payload = new byte[] { },
+                Verification = VerificationType
+            });
+            var pk = HandleReply(addr, Command.GetMotorStatus, true);
+            var payload = pk!.Value.Payload;
+            return new MotorStatus
+            {
+                Enabled = (payload[0] & 0x01) == 0x01,
+                AtTarget = (payload[1] & 0x02) == 0x01,
+                Clogging = (payload[2] & 0x04) == 0x01,
+                ClogProtecting = (payload[3] & 0x08) == 0x01
+            };
+        }
+
+
+
         #endregion
-    }
-
-    public enum Command : byte
-    {
-        PowerCtrl = 0xF3,
-        SetSpeed = 0xF6,
-        SetPosition = 0xFD,
-        Brake = 0xFE,
-        Sync = 0xFF,
-
-        SetZeroDegree = 0x93,
-        GoHome = 0x9A,
-        AbortGoHome = 0x9C,
-        ReadHomingSettings = 0x22,
-        SetHomingConfig = 0x4C,
-        ReadHomingStatus = 0x3B,
-
-        CalibrateEncoder = 0x06,
-        ZeroPulseCounter = 0x0A,
-        ClogProtectionReset = 0x0E,
-
-        FactoryReset = 0x0F,
-        GetDriverVersion = 0x1F,
-        ReadMotorCharacteristic = 0x20,
-        ReadPosPIDParameters = 0x21,
-        GetRailVotage = 0x24,
-        GetPhaseCurrent = 0x27,
-        GetEncoderReading = 0x31,
-        GetPulses = 0x32,
-        GetCLTargetPos = 0x33,
-        GetOLTargetPos = 0x34,
-        GetRPM = 0x35,
-        GetCurrentPos = 0x36,
-        GetPosError = 0x37,
-        GetMotorStatus = 0x3A,
-        GetDriverSettings = 0x42,
-        GetDriverStatus = 0x43,
-
-        SetMicroStep = 0x84,
-        SetDriverAddr = 0xAE,
-        SetDriverMode = 0x46,
-        SetOpenLoopCurrent = 0x44,
-        SetDriverParameter = 0x48,
-        SetPosPIDParameters = 0x4A,
-        PutPowerOnCommand = 0xF7,
-        SetVelScale = 0x4F
     }
 
     public struct Pack

@@ -27,4 +27,37 @@ namespace ZDTStepperDriver.Models
         // 上电自动开始回零
         public bool PowerOnHome;
     }
+
+    public struct HomingStatus
+    {
+        public bool
+            // 编码器就位
+            EncoderOK,
+            // 校准表就位
+            CalibrationTableOK,
+            // 正在执行回零
+            Homing,
+            // 回零失败
+            HomingFailed;
+    }
+
+    public struct Version
+    {
+        public byte Firmware, Hardware;
+    }
+
+    public struct MotorCharacteristics
+    {
+        public ushort PhaseResisitance, PhaseInductance;
+    }
+
+    public struct PIDParameters
+    {
+        public int Kp, Ki, Kd;
+    }
+
+    public struct MotorStatus
+    {
+        public bool Enabled, AtTarget, Clogging, ClogProtecting;
+    }
 }
